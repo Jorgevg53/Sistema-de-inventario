@@ -123,6 +123,7 @@ function start(port = Number(process.env.PORT) || 3000) {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  process.on('SIGHUP', shutdown); // cierre de la ventana de consola en Windows
   return server;
 }
 

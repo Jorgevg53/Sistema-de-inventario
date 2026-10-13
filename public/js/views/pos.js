@@ -520,6 +520,11 @@
         focusSearch();
       }
 
+      /** Actualiza existencia y precio de una línea guardada con los datos actuales del catálogo. */
+      function refreshLine(l, v) {
+        return { ...l, stock: v.stock, price: v.price, unit_price: l.unit_price === l.price ? v.price : l.unit_price };
+      }
+
       // ---- Ventas en espera ----
       async function holdSale() {
         if (!cart.value.length) return App.toast('No hay productos en la venta', 'warning');
@@ -549,7 +554,7 @@
         if (cart.value.length && !(await App.confirm({ title: 'Recuperar venta', message: 'La venta actual se reemplazará. ¿Continuar?', confirmText: 'Recuperar' }))) return;
         const byId = new Map();
         for (const p of catalog.value) for (const v of p.variants) byId.set(v.id, v);
-        cart.value = h.data.items.filter((l) => byId.has(l.variant_id)).map((l) => ({ ...l, stock: byId.get(l.variant_id).stock, price: byId.get(l.variant_id).price }));
+        cart.value = h.data.items.filter((l) => byId.has(l.variant_id)).map((l) => refreshLine(l, byId.get(l.variant_id)));
         if (cart.value.length < h.data.items.length) App.toast('Algunos productos ya no están disponibles y se omitieron.', 'warning');
         customer.value = h.data.customer || null;
         Object.assign(globalDiscount, h.data.globalDiscount || { type: 'pct', value: 0 });
@@ -677,7 +682,7 @@
           if (!saved || !saved.cart || !saved.cart.length) return;
           const byId = new Map();
           for (const p of catalog.value) for (const v of p.variants) byId.set(v.id, v);
-          cart.value = saved.cart.filter((l) => byId.has(l.variant_id)).map((l) => ({ ...l, stock: byId.get(l.variant_id).stock }));
+          cart.value = saved.cart.filter((l) => byId.has(l.variant_id)).map((l) => refreshLine(l, byId.get(l.variant_id)));
           customer.value = saved.customer || null;
           Object.assign(globalDiscount, saved.globalDiscount || {});
           notes.value = saved.notes || '';

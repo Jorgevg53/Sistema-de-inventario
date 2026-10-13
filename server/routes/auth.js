@@ -17,6 +17,7 @@ function tooManyAttempts(key) {
 }
 function registerFail(key) {
   const now = Date.now();
+  if (attempts.size > 1000) attempts.clear();
   const rec = attempts.get(key);
   if (!rec || now - rec.first > 10 * 60 * 1000) attempts.set(key, { first: now, count: 1 });
   else rec.count++;

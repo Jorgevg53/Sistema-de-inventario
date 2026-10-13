@@ -3,7 +3,9 @@ const crypto = require('node:crypto');
 const db = require('./db');
 const { HttpError, nowLocal } = require('./util');
 
+// La sesión expira tras 12 horas sin actividad (se renueva sola mientras se usa el sistema).
 const SESSION_HOURS = 12;
+const COOKIE_DAYS = 30;
 const COOKIE = 'sid';
 
 const ALL_PERMISSIONS = [
@@ -99,7 +101,7 @@ function tokenFrom(req) {
 }
 
 function setSessionCookie(res, token) {
-  res.setHeader('Set-Cookie', `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`);
+  res.setHeader('Set-Cookie', `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${COOKIE_DAYS * 86400}`);
 }
 
 function clearSessionCookie(res) {
@@ -110,12 +112,18 @@ function clearSessionCookie(res) {
 function requireAuth(req, res, next) {
   const token = tokenFrom(req);
   if (token) {
+    const now = nowLocal();
     const row = db.get(
-      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+      `SELECT u.*, s.expires_at AS session_expires FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ? AND s.expires_at > ? AND u.active = 1`,
-      token, nowLocal(),
+      token, now,
     );
     if (row) {
+      // Renovar la sesión como máximo una vez cada 10 minutos.
+      const renewAt = nowLocal(new Date(Date.now() + (SESSION_HOURS * 3600 - 600) * 1000));
+      if (row.session_expires < renewAt) {
+        db.run('UPDATE sessions SET expires_at = ? WHERE token = ?', nowLocal(new Date(Date.now() + SESSION_HOURS * 3600 * 1000)), token);
+      }
       req.user = publicUser(row);
       req.token = token;
       return next();

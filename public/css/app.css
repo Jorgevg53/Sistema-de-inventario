@@ -332,7 +332,7 @@ button { font-family: inherit; }
 
 /* ---------- Estados vacíos y carga ---------- */
 .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
-.empty .icon { color: var(--muted-2); margin-bottom: 10px; }
+.empty > .icon { color: var(--muted-2); margin-bottom: 10px; }
 .empty h3 { color: var(--text-2); margin-bottom: 4px; }
 .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: var(--muted); }
 .spinner { width: 20px; height: 20px; border: 2.5px solid var(--border); border-top-color: var(--primary-600); border-radius: 50%; animation: spin .7s linear infinite; }
@@ -349,7 +349,8 @@ button { font-family: inherit; }
 /* ---------- Productos ---------- */
 .thumb { width: 42px; height: 42px; border-radius: 9px; object-fit: cover; background: var(--surface-2); border: 1px solid var(--border); flex-shrink: 0;
   display: grid; place-items: center; font-weight: 750; font-size: 13px; color: #fff; overflow: hidden; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.thumb { position: relative; }
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .thumb.lg { width: 120px; height: 120px; border-radius: 14px; font-size: 30px; }
 .size-pills { display: flex; flex-wrap: wrap; gap: 3px; }
 .size-pill { font-size: 10.5px; font-weight: 650; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
@@ -364,7 +365,8 @@ button { font-family: inherit; }
 .image-drop { width: 140px; height: 140px; border: 2px dashed var(--border-strong); border-radius: 14px; display: grid; place-items: center; cursor: pointer;
   color: var(--muted); text-align: center; font-size: 12px; overflow: hidden; background: var(--surface-2); transition: border-color .12s; }
 .image-drop:hover { border-color: var(--primary-500); color: var(--primary-600); }
-.image-drop img { width: 100%; height: 100%; object-fit: cover; }
+.image-drop { position: relative; }
+.image-drop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- Punto de venta ---------- */
 .pos { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: 100%; }
@@ -379,7 +381,8 @@ button { font-family: inherit; }
 .pos-card:active { transform: scale(.98); }
 .pos-card:focus-visible { outline: 3px solid rgba(14, 165, 233, .5); }
 .pos-card .pc-img { height: 104px; display: grid; place-items: center; color: #fff; font-size: 26px; font-weight: 800; letter-spacing: -.02em; position: relative; }
-.pos-card .pc-img img { width: 100%; height: 100%; object-fit: cover; }
+.pos-card .pc-img { overflow: hidden; }
+.pos-card .pc-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .pos-card .pc-body { padding: 9px 10px 10px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .pos-card .pc-name { font-size: 13px; font-weight: 650; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
 .pos-card .pc-brand { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
@@ -412,7 +415,7 @@ button { font-family: inherit; }
 .qty input { width: 44px; height: 30px; border: 0; text-align: center; font: inherit; font-weight: 700; font-size: 14px; }
 .qty input:focus { outline: none; background: var(--primary-50); }
 .cart-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; padding: 30px; color: var(--muted); }
-.cart-empty .icon { color: #cbd5e1; margin-bottom: 12px; }
+.cart-empty > .icon { color: #cbd5e1; margin-bottom: 12px; }
 .cart-totals { border-top: 1px solid var(--border); padding: 12px 14px; background: var(--surface-2); }
 .cart-totals .row { display: flex; justify-content: space-between; font-size: 13.5px; padding: 2px 0; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .cart-totals .row.total { font-size: 24px; font-weight: 800; color: var(--text); padding-top: 6px; letter-spacing: -.02em; }
