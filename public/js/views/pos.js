@@ -608,6 +608,7 @@
           });
           showCheckout.value = false;
           lastSale.value = sale;
+          App.lastSaleId = sale.id;
           // Descontar stock localmente y refrescar el catálogo en segundo plano.
           for (const it of sale.items) {
             for (const p of catalog.value) {
@@ -630,6 +631,11 @@
       function newSale() {
         lastSale.value = null;
         focusSearch();
+      }
+
+      async function reprintLast() {
+        if (!App.lastSaleId) return App.toast('Aún no hay ventas en esta sesión', 'warning');
+        try { App.printTicket(await App.api.get('/sales/' + App.lastSaleId), { copy: true }); } catch (e) { App.error(e); }
       }
 
       // ---- Teclado ----
@@ -706,7 +712,7 @@
         heldId, searchInput, picker, editing, showCheckout, showCustomer, showHeld, heldList, showOpenCash, openingAmount, lastSale,
         allowNegative, canPrice, maxDiscount, cashOpen, totals, qtyInCart,
         productStock, priceLabel, clickProduct, pickVariant, onSearchEnter, lineCalc, changeQty, setQty, removeLine, saveLine, clearCart,
-        askGlobalDiscount, askNotes, holdSale, openHeld, resumeHeld, deleteHeld, openCash, openCheckout, confirmSale, newSale, focusSearch,
+        askGlobalDiscount, askNotes, holdSale, openHeld, resumeHeld, deleteHeld, openCash, openCheckout, confirmSale, newSale, reprintLast, focusSearch,
         loadCatalog, image: App.productImage, colorFor: App.colorFor,
       };
     },
@@ -765,6 +771,7 @@
               <button v-if="customer" class="btn btn-ghost btn-icon btn-xs" @click.stop="customer = null" title="Quitar cliente"><icon name="x" :size="14" /></button>
               <span v-else class="kbd">F4</span>
             </div>
+            <button class="btn btn-icon" title="Reimprimir último ticket" @click="reprintLast"><icon name="printer" /></button>
             <button class="btn btn-icon" title="Ventas en espera (F7)" @click="openHeld"><icon name="history" /></button>
           </div>
           <div v-if="!cashOpen && store.cashLoaded" class="alert alert-warning" style="margin: 10px 14px 0">
