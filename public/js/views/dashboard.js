@@ -46,7 +46,16 @@
         } catch (e) { App.error(e); } finally { seeding.value = false; }
       }
 
-      return { d, loading, seeding, store, trend, greeting, chart, maxTop, loadDemo, fmt: App.fmt, can: App.can };
+      const quick = [
+        { to: '/compras/nueva', icon: 'truck', label: 'Entrada de mercancía', desc: 'Registrar lo que llegó del proveedor', perm: 'purchases' },
+        { to: '/productos/nuevo', icon: 'package-plus', label: 'Nuevo producto', desc: 'Alta con tallas y colores', perm: 'products.edit' },
+        { to: '/inventario', icon: 'sliders-horizontal', label: 'Ajuste de inventario', desc: 'Mermas, daños y correcciones', perm: 'inventory' },
+        { to: '/inventario?tab=conteo', icon: 'clipboard-check', label: 'Conteo físico', desc: 'Contar escaneando las piezas', perm: 'inventory' },
+        { to: '/etiquetas', icon: 'tag', label: 'Etiquetas', desc: 'Imprimir códigos de barras', perm: 'products.view' },
+        { to: '/productos?stock=low', icon: 'triangle-alert', label: 'Por surtir', desc: 'Productos en stock mínimo', perm: 'products.view' },
+      ].filter((q) => App.can(q.perm));
+
+      return { d, loading, seeding, store, trend, greeting, chart, maxTop, quick, loadDemo, fmt: App.fmt, can: App.can };
     },
     template: `
       <loading v-if="loading" />
@@ -89,6 +98,15 @@
 
         <div class="grid" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)" :class="{ 'grid-2': false }">
           <div class="flex-col gap-16" style="min-width:0">
+            <div class="card" v-if="!d.recent_sales">
+              <div class="card-header"><h3><icon name="sparkles" /> Accesos rápidos</h3></div>
+              <div class="card-body grid grid-2">
+                <a v-for="q in quick" :key="q.to" :href="'#' + q.to" class="payment-line" style="padding:16px;color:inherit;text-decoration:none">
+                  <div class="stat-icon" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--primary-50);color:var(--primary-600)"><icon :name="q.icon" :size="20" /></div>
+                  <div><div class="bold">{{ q.label }}</div><div class="tiny muted">{{ q.desc }}</div></div>
+                </a>
+              </div>
+            </div>
             <div class="card" v-if="chart">
               <div class="card-header"><h3><icon name="chart-column" /> Ventas de los últimos 30 días</h3>
                 <a v-if="can('reports')" href="#/reportes" class="btn btn-sm btn-ghost ml-auto">Ver reportes <icon name="chevron-right" :size="15" /></a></div>
