@@ -1,0 +1,22 @@
+{
+  "name": "sistema-inventario-natacion",
+  "version": "1.0.0",
+  "description": "Sistema de punto de venta e inventario para tienda de natación y deportes",
+  "main": "server/index.js",
+  "private": true,
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "demo": "node --disable-warning=ExperimentalWarning server/seed-demo.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "express": "^5.3.0",
+    "jsbarcode": "^3.12.3",
+    "vue": "^3.5.44"
+  }
+}
