@@ -38,7 +38,7 @@ router.post('/inventory/adjust', can('inventory'), (req, res) => {
 
 // ---------- Kardex / movimientos ----------
 
-router.get('/inventory/movements', can('inventory', 'products.view'), (req, res) => {
+router.get('/inventory/movements', can('inventory', 'products.edit'), (req, res) => {
   const where = [];
   const params = [];
   if (req.query.variant_id) { where.push('m.variant_id = ?'); params.push(int(req.query.variant_id)); }
@@ -137,8 +137,8 @@ router.post('/purchases', can('purchases'), (req, res) => {
   if (!items.length) throw bad('Agrega al menos un producto a la compra.');
   const updateCost = req.body.update_cost !== false;
   const id = db.tx(() => {
-    const r = db.run('INSERT INTO purchases (supplier_id, invoice, user_id, notes) VALUES (?, ?, ?, ?)',
-      int(req.body.supplier_id) || null, str(req.body.invoice), req.user.id, str(req.body.notes));
+    const r = db.run('INSERT INTO purchases (supplier_id, invoice, user_id, notes, cost_updated) VALUES (?, ?, ?, ?, ?)',
+      int(req.body.supplier_id) || null, str(req.body.invoice), req.user.id, str(req.body.notes), updateCost ? 1 : 0);
     const purchaseId = Number(r.lastInsertRowid);
     const ref = folio('C', purchaseId);
     let total = 0;
@@ -177,6 +177,12 @@ router.post('/purchases/:id/cancel', can('purchases'), (req, res) => {
   db.tx(() => {
     for (const it of db.all('SELECT * FROM purchase_items WHERE purchase_id = ?', p.id)) {
       if (!it.variant_id) continue;
+      // Revertir el costo promedio que generó esta compra.
+      const v = db.get('SELECT stock, cost FROM product_variants WHERE id = ?', it.variant_id);
+      if (p.cost_updated && v && v.stock - it.quantity > 0) {
+        const reverted = round2((v.stock * v.cost - it.quantity * it.unit_cost) / (v.stock - it.quantity));
+        if (reverted >= 0) db.run('UPDATE product_variants SET cost = ? WHERE id = ?', reverted, it.variant_id);
+      }
       stock.moveStock({
         variantId: it.variant_id, qty: -it.quantity, type: 'cancelacion_compra', reference: p.folio,
         note: str(req.body.reason), userId: req.user.id, unitCost: it.unit_cost, allowNegative: true,

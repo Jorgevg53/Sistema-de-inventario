@@ -343,8 +343,14 @@ function tx(fn) {
   }
 }
 
+function addColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 function migrate() {
   db.exec(SCHEMA);
+  addColumn('purchases', 'cost_updated', 'INTEGER NOT NULL DEFAULT 1');
   const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) insertSetting.run(k, v);
 

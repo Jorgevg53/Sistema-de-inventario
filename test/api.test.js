@@ -85,6 +85,15 @@ test('computeSale: IVA no incluido', () => {
   assert.equal(r.total, 313.2);
 });
 
+test('computeSale: el descuento general cuadra aunque la última línea sea gratis', () => {
+  const r = computeSale(
+    [{ unit_price: 405.7, quantity: 1 }, { unit_price: 798.7, quantity: 1 }, { unit_price: 0, quantity: 1 }],
+    { type: 'pct', value: 5 }, 16, true,
+  );
+  assert.equal(r.total, 1144.18);
+  assert.equal(r.lines.reduce((s, l) => s + l.discount, 0).toFixed(2), r.global_discount.toFixed(2));
+});
+
 test('inicio de sesión rechaza contraseña incorrecta y exige sesión', async () => {
   const c = client();
   assert.equal((await c.login('admin', 'mala')).status, 401);
@@ -165,6 +174,24 @@ test('cajero: no puede cambiar precios, tiene límite de descuento y no ve repor
   assert.equal(r.status, 201);
   assert.equal(r.data.total, 225);
   assert.equal((await cashier.post(`/sales/${r.data.id}/cancel`, { reason: 'x' })).status, 403);
+
+  // El cajero no ve costos ni puede exportar el catálogo o el kardex.
+  const catalog = (await cashier.get('/pos/catalog')).data;
+  assert.ok(catalog.every((p) => p.variants.every((v) => !('cost' in v))));
+  const list = (await cashier.get('/products')).data;
+  assert.ok(!('max_cost' in list.rows[0]) && !('cost' in list.rows[0].variants[0]) && !('cost_value' in list.summary));
+  assert.ok(!('cost' in (await cashier.get('/products/' + product.id)).data.variants[0]));
+  assert.ok((await cashier.get('/variants/search?q=Traje')).data.every((x) => !('cost' in x)));
+  assert.equal((await cashier.get('/export/products.csv')).status, 403);
+  assert.equal((await cashier.get('/inventory/movements')).status, 403);
+});
+
+test('editar usuario con contraseña inválida no aplica otros cambios', async () => {
+  const users = (await admin.get('/users')).data;
+  const cajera = users.find((u) => u.username === 'cajera');
+  const r = await admin.put('/users/' + cajera.id, { role: 'admin', password: '123' });
+  assert.equal(r.status, 400);
+  assert.equal((await admin.get('/users')).data.find((u) => u.id === cajera.id).role, 'cajero');
 });
 
 test('devolución parcial: reembolso proporcional, regresa stock y afecta la caja', async () => {
@@ -201,6 +228,21 @@ test('cancelación: regresa stock y excluye la venta del corte', async () => {
   assert.equal((await admin.get('/products/' + product.id)).data.variants.find((x) => x.id === v.id).stock, 1);
 });
 
+test('no se puede cancelar una venta con devoluciones aunque el reembolso sea $0', async () => {
+  const gift = (await admin.post('/products', { name: 'Regalo', variants: [{ price: 0, stock: 10 }] })).data.variants[0];
+  const v = product.variants[0];
+  const sale = (await admin.post('/sales', {
+    items: [{ variant_id: v.id, quantity: 1 }, { variant_id: gift.id, quantity: 2 }], payments: [{ method: 'tarjeta', amount: 250 }],
+  })).data;
+  const giftLine = sale.items.find((i) => i.variant_id === gift.id);
+  const ret = await admin.post(`/sales/${sale.id}/return`, { items: [{ sale_item_id: giftLine.id, quantity: 2 }], refund_method: 'tarjeta', reason: 'x' });
+  assert.equal(ret.status, 200);
+  assert.equal(ret.data.can_cancel, false);
+  assert.equal((await admin.post(`/sales/${sale.id}/cancel`, { reason: 'x' })).status, 400);
+  const g = (await admin.get('/products/' + gift.product_id)).data.variants[0];
+  assert.equal(g.stock, 10);
+});
+
 test('compra: suma existencias, costo promedio ponderado y cancelación', async () => {
   const v = product.variants[1];
   const r = await admin.post('/purchases', { invoice: 'F-1', items: [{ variant_id: v.id, quantity: 3, unit_cost: 140, new_price: 260 }] });
@@ -213,6 +255,7 @@ test('compra: suma existencias, costo promedio ponderado y cancelación', async 
   assert.equal((await admin.post(`/purchases/${r.data.id}/cancel`, { reason: 'Devuelta' })).status, 200);
   pv = (await admin.get('/products/' + product.id)).data.variants.find((x) => x.id === v.id);
   assert.equal(pv.stock, 1);
+  assert.equal(pv.cost, 100, 'al cancelar se revierte el costo promedio');
 });
 
 test('ajuste de inventario (fijar y sumar) queda en el kardex', async () => {
@@ -256,6 +299,24 @@ test('importación CSV agrupa tallas como variantes de un producto', async () =>
   assert.equal(list.data.rows[0].total_stock, 5);
   const exp = await admin.get('/export/products.csv');
   assert.match(exp.data, /Short CSV/);
+
+  // Celdas vacías no borran existencia ni mínimo; un código de barras ajeno no sobrescribe otra variante.
+  const short = (await admin.get('/products?q=Short%20CSV')).data.rows[0].variants;
+  const s0 = short[0];
+  await admin.put(`/products/${s0.product_id}`, { variants: short.map((v) => ({ ...v, min_stock: 4 })) });
+  const upd = await admin.post('/import/products', {
+    csv: `nombre,sku,precio,stock,stock_minimo\nShort CSV,${s0.sku},333,,`, update_stock: true,
+  });
+  assert.equal(upd.data.updated_variants, 1);
+  const after = (await admin.get('/products/' + s0.product_id)).data.variants.find((v) => v.id === s0.id);
+  assert.equal(after.price, 333);
+  assert.equal(after.stock, s0.stock);
+  assert.equal(after.min_stock, 4);
+  const clash = await admin.post('/import/products', {
+    csv: `nombre,talla,codigo_barras,precio\nShort CSV,XL,${short[1].barcode},300`,
+  });
+  assert.equal(clash.data.errors.length, 1);
+  assert.equal((await admin.get('/products/' + s0.product_id)).data.variants.find((v) => v.id === short[1].id).size, short[1].size);
 });
 
 test('reportes: ventas netas y utilidad coherentes', async () => {

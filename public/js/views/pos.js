@@ -329,7 +329,23 @@
         if (!quiet) loadingCatalog.value = true;
         try {
           catalog.value = await App.api.get('/pos/catalog');
+          return syncCart();
         } catch (e) { App.error(e); } finally { loadingCatalog.value = false; }
+        return false;
+      }
+
+      /** Actualiza precios y existencias del carrito con el catálogo vigente. Devuelve true si cambió algún precio. */
+      function syncCart() {
+        if (!cart.value.length) return false;
+        const byId = new Map();
+        for (const p of catalog.value) for (const v of p.variants) byId.set(v.id, v);
+        let changed = false;
+        cart.value = cart.value.filter((l) => byId.has(l.variant_id)).map((l) => {
+          const fresh = refreshLine(l, byId.get(l.variant_id));
+          if (fresh.unit_price !== l.unit_price) changed = true;
+          return fresh;
+        });
+        return changed;
       }
 
       const qtyInCart = computed(() => {
@@ -581,10 +597,15 @@
       }
 
       // ---- Cobro ----
-      function openCheckout() {
+      async function openCheckout() {
         if (!cart.value.length) return App.toast('Agrega productos para cobrar', 'warning');
         if (!cashOpen.value) { showOpenCash.value = true; return; }
-        showCheckout.value = true;
+        // Verificar precios vigentes antes de cobrar (pudieron cambiar desde otra computadora).
+        if (await loadCatalog(true)) {
+          App.toast('Se actualizaron precios del carrito. Revisa el total antes de cobrar.', 'warning', 5000);
+          return;
+        }
+        if (cart.value.length) showCheckout.value = true;
       }
 
       async function confirmSale({ payments, print, done }) {

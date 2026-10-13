@@ -17,7 +17,7 @@
       });
       const data = ref(null);
       const loading = ref(false);
-      const showCost = computed(() => App.can('products.edit') || App.can('inventory') || App.can('reports'));
+      const showCost = computed(() => ['products.edit', 'inventory', 'purchases', 'reports'].some((x) => App.can(x)));
       const adjusting = ref(null);
 
       async function load() {
@@ -65,7 +65,7 @@
               <option value="price">Menor precio</option><option value="-price">Mayor precio</option><option value="-created">Más recientes</option><option value="category">Categoría</option>
             </select>
             <div class="ml-auto flex">
-              <button class="btn" @click="exportCsv" title="Descargar catálogo en CSV (Excel)"><icon name="download" /> Exportar</button>
+              <button v-if="can('products.edit') || can('inventory') || can('reports')" class="btn" @click="exportCsv" title="Descargar catálogo en CSV (Excel)"><icon name="download" /> Exportar</button>
               <a v-if="can('products.edit')" href="#/productos/nuevo" class="btn btn-primary"><icon name="plus" /> Nuevo producto</a>
             </div>
           </div>
@@ -138,6 +138,7 @@
       const id = computed(() => store.route.params.id);
       const isNew = computed(() => !id.value);
       const canEdit = computed(() => App.can('products.edit'));
+      const showCost = computed(() => ['products.edit', 'inventory', 'purchases', 'reports'].some((x) => App.can(x)));
       const loading = ref(!isNew.value);
       const saving = ref(false);
       const suppliers = ref([]);
@@ -269,14 +270,14 @@
         if (variants.value.some((v) => v.active && !(Number(v.price) > 0))) {
           if (!(await App.confirm({ title: 'Precio en cero', message: 'Hay variantes sin precio de venta. ¿Guardar de todos modos?', confirmText: 'Guardar' }))) return;
         }
-        if (multi.value && variants.value.some((v) => !v.size && !v.color)) return App.toast('Cada variante debe tener talla o color', 'error');
+        if (multi.value && variants.value.some((v) => v.active && !v.size && !v.color)) return App.toast('Cada variante debe tener talla o color', 'error');
         const payload = {
           ...form,
           category_id: form.category_id || null,
           supplier_id: form.supplier_id || null,
           auto_barcode: autoBarcode.value,
           variants: variants.value.map((v) => ({
-            id: v.id || undefined, size: multi.value ? v.size : '', color: multi.value ? v.color : '', sku: v.sku, barcode: v.barcode,
+            id: v.id || undefined, size: multi.value || !v.active ? v.size : '', color: multi.value || !v.active ? v.color : '', sku: v.sku, barcode: v.barcode,
             cost: Number(v.cost) || 0, price: Number(v.price) || 0, stock: v.id ? undefined : Number(v.stock) || 0,
             min_stock: Number(v.min_stock) || 0, location: v.location, active: v.active ? 1 : 0,
           })),
@@ -320,7 +321,7 @@
       const brandList = computed(() => store.brands.map((b) => b.name));
 
       return {
-        id, isNew, canEdit, loading, saving, suppliers, product, form, variants, multi, sizesText, colorsText, autoBarcode, imagePreview, fileInput, bulk, adjusting,
+        id, isNew, canEdit, showCost, loading, saving, suppliers, product, form, variants, multi, sizesText, colorsText, autoBarcode, imagePreview, fileInput, bulk, adjusting,
         SIZE_PRESETS, COLOR_PRESETS, GENDERS, store, totalStock, brandList,
         generate, setMulti, removeVariant, applyBulk, marginOf, pickImage, onImage, removeImage, addCategory, save, remove, afterAdjust,
         addVariant: () => variants.value.push(blankVariant({ cost: variants.value[0]?.cost ?? '', price: variants.value[0]?.price ?? '' })),
@@ -415,7 +416,7 @@
             <table class="table variant-table">
               <thead><tr>
                 <th v-if="multi">Talla</th><th v-if="multi">Color</th><th>SKU</th><th>Código de barras</th>
-                <th class="num">Costo</th><th class="num">Precio venta</th><th class="num">Margen</th>
+                <th v-if="showCost" class="num">Costo</th><th class="num">Precio venta</th><th v-if="showCost" class="num">Margen</th>
                 <th class="num">{{ isNew ? 'Stock inicial' : 'Existencia' }}</th><th class="num">Mínimo</th><th>Ubicación</th><th></th>
               </tr></thead>
               <tbody>
@@ -424,9 +425,9 @@
                   <td v-if="multi" style="width:120px"><input class="input" v-model="v.color" placeholder="Color" /></td>
                   <td style="min-width:120px"><input class="input mono" v-model="v.sku" placeholder="Automático" /></td>
                   <td style="min-width:140px"><input class="input mono" v-model="v.barcode" :placeholder="autoBarcode ? 'Automático' : 'Escanear'" /></td>
-                  <td style="width:105px"><input class="input num" type="number" min="0" step="0.01" v-model="v.cost" placeholder="0.00" /></td>
+                  <td v-if="showCost" style="width:105px"><input class="input num" type="number" min="0" step="0.01" v-model="v.cost" placeholder="0.00" /></td>
                   <td style="width:110px"><input class="input num bold" type="number" min="0" step="0.01" v-model="v.price" placeholder="0.00" /></td>
-                  <td class="num small" :class="marginOf(v) < 20 ? 'text-warning' : 'text-success'">{{ fmt.pct(marginOf(v), 0) }}</td>
+                  <td v-if="showCost" class="num small" :class="marginOf(v) < 20 ? 'text-warning' : 'text-success'">{{ fmt.pct(marginOf(v), 0) }}</td>
                   <td style="width:110px" class="num">
                     <input v-if="!v.id" class="input num" type="number" min="0" step="1" v-model="v.stock" placeholder="0" />
                     <div v-else class="flex gap-4" style="justify-content:flex-end">
@@ -442,7 +443,7 @@
                   </td>
                 </tr>
               </tbody>
-              <tfoot v-if="multi && variants.length > 1">
+              <tfoot v-if="multi && variants.length > 1 && canEdit">
                 <tr>
                   <td colspan="4" class="small muted" style="font-weight:600">Aplicar a todas las variantes →</td>
                   <td><div class="flex gap-4"><input class="input num" type="number" v-model="bulk.cost" placeholder="Costo" /><button type="button" class="btn btn-icon btn-xs" @click="applyBulk('cost')" title="Aplicar costo"><icon name="check" :size="13" /></button></div></td>

@@ -107,12 +107,14 @@ router.put('/users/:id', auth.can('settings'), (req, res) => {
     const { n } = db.get("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1 AND id <> ?", user.id);
     if (n === 0) throw bad('Debe existir al menos un administrador activo.');
   }
-  db.run('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?', name, role, active, user.id);
-  if (req.body.password) {
-    if (String(req.body.password).length < 6) throw bad('La contraseña debe tener al menos 6 caracteres.');
-    db.run('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', auth.hashPassword(req.body.password), user.id);
-  }
-  if (!active) db.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  if (req.body.password && String(req.body.password).length < 6) throw bad('La contraseña debe tener al menos 6 caracteres.');
+  db.tx(() => {
+    db.run('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?', name, role, active, user.id);
+    if (req.body.password) {
+      db.run('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', auth.hashPassword(req.body.password), user.id);
+    }
+    if (!active) db.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  });
   res.json(auth.publicUser(db.get('SELECT * FROM users WHERE id = ?', user.id)));
 });
 

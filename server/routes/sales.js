@@ -39,10 +39,14 @@ function computeSale(lines, globalDiscount, taxRate, taxIncluded) {
       : Math.min(afterLines, round2(num(globalDiscount.value)));
   }
   // Repartir el descuento global proporcionalmente entre las líneas.
+  // El residuo de redondeo va a la última línea con importe (> 0) para que el total cuadre exacto.
   if (global > 0 && afterLines > 0) {
     let remaining = global;
+    let last = -1;
+    out.forEach((l, i) => { if (l.total > 0) last = i; });
     out.forEach((l, i) => {
-      const share = i === out.length - 1 ? remaining : round2(global * l.total / afterLines);
+      if (l.total <= 0) return;
+      const share = i === last ? remaining : round2(global * l.total / afterLines);
       const applied = Math.min(share, l.total);
       l.discount = round2(l.discount + applied);
       l.total = round2(l.total - applied);
@@ -97,7 +101,8 @@ function getSale(id) {
       JOIN sale_items si ON si.id = ri.sale_item_id WHERE ri.return_id = ?`, r.id);
   }
   const session = s.cash_session_id && db.get('SELECT status FROM cash_sessions WHERE id = ?', s.cash_session_id);
-  s.can_cancel = s.status === 'completada' && s.returned_total === 0 && !!session && session.status === 'abierta';
+  const hasReturns = s.returned_total > 0 || s.items.some((i) => i.returned_qty > 0);
+  s.can_cancel = s.status === 'completada' && !hasReturns && !!session && session.status === 'abierta';
   s.can_return = s.status === 'completada' && s.items.some((i) => i.quantity > i.returned_qty);
   return s;
 }
@@ -250,7 +255,7 @@ router.post('/sales/:id/cancel', can('sales.cancel'), (req, res) => {
   const s = getSale(req.params.id);
   if (!s) throw notFound('Venta no encontrada.');
   if (s.status === 'cancelada') throw bad('La venta ya está cancelada.');
-  if (s.returned_total > 0) throw bad('La venta tiene devoluciones; usa "Devolución" para los productos restantes.');
+  if (s.returned_total > 0 || s.items.some((i) => i.returned_qty > 0)) throw bad('La venta tiene devoluciones; usa "Devolución" para los productos restantes.');
   if (!s.can_cancel) throw bad('El corte de caja de esta venta ya se cerró. Usa "Devolución" para regresar productos.');
   const reason = str(req.body.reason);
   if (!reason) throw bad('Indica el motivo de la cancelación.');

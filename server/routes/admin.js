@@ -49,11 +49,24 @@ router.post('/backup/restore', can('settings'), express.raw({ type: 'application
   // Copia de seguridad automática de la base actual antes de reemplazarla.
   const backups = path.join(db.DATA_DIR, 'respaldos');
   fs.mkdirSync(backups, { recursive: true });
-  db.raw().exec(`VACUUM INTO '${path.join(backups, `antes-de-restaurar-${stamp()}.db`).replace(/'/g, "''")}'`);
+  const safety = path.join(backups, `antes-de-restaurar-${stamp()}.db`);
+  db.raw().exec(`VACUUM INTO '${safety.replace(/'/g, "''")}'`);
   db.close();
-  for (const ext of ['', '-wal', '-shm']) fs.rmSync(db.DB_FILE + ext, { force: true });
-  fs.renameSync(tmp, db.DB_FILE);
-  db.open();
+  const replaceWith = (source) => {
+    for (const ext of ['', '-wal', '-shm']) fs.rmSync(db.DB_FILE + ext, { force: true });
+    fs.copyFileSync(source, db.DB_FILE);
+    db.open();
+  };
+  try {
+    replaceWith(tmp);
+  } catch (err) {
+    // Si algo falla, volver a la base que había antes de restaurar.
+    try { db.close(); } catch { /* ya cerrada */ }
+    replaceWith(safety);
+    throw bad('No se pudo restaurar el respaldo; se conservó la información anterior.');
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
   res.json({ ok: true });
 });
 
@@ -61,7 +74,7 @@ router.post('/backup/restore', can('settings'), express.raw({ type: 'application
 
 const CSV_HEADERS = ['nombre', 'categoria', 'marca', 'proveedor', 'genero', 'descripcion', 'sku', 'codigo_barras', 'talla', 'color', 'costo', 'precio', 'stock', 'stock_minimo', 'ubicacion', 'activo'];
 
-router.get('/export/products.csv', can('products.view'), (req, res) => {
+router.get('/export/products.csv', can('products.edit', 'inventory', 'reports'), (req, res) => {
   const rows = db.all(`
     SELECT p.name, c.name AS category, b.name AS brand, s.name AS supplier, p.gender, p.description,
       v.sku, v.barcode, v.size, v.color, v.cost, v.price, v.stock, v.min_stock, v.location, (p.active AND v.active) AS active
@@ -126,23 +139,37 @@ router.post('/import/products', can('products.edit'), (req, res) => {
         const color = str(pickCol(r, 'color'));
         const cost = round2(num(pickCol(r, 'costo', 'cost')));
         const price = round2(num(pickCol(r, 'precio', 'precio_venta', 'price')));
-        const qty = int(pickCol(r, 'stock', 'existencia', 'existencias', 'cantidad'));
+        // Celdas vacías = no cambiar el dato existente.
+        const qtyRaw = pickCol(r, 'stock', 'existencia', 'existencias', 'cantidad');
+        const qty = qtyRaw === '' ? null : int(qtyRaw);
         const minRaw = pickCol(r, 'stock_minimo', 'minimo', 'min_stock');
-        const minStock = minRaw === '' ? defaultMin : Math.max(0, int(minRaw));
+        const minStock = minRaw === '' ? null : Math.max(0, int(minRaw));
         const location = str(pickCol(r, 'ubicacion', 'location'));
         const activeRaw = String(pickCol(r, 'activo', 'active')).toLowerCase();
         const active = activeRaw === 'no' || activeRaw === '0' || activeRaw === 'false' ? 0 : 1;
 
-        const existing = (sku && db.get('SELECT * FROM product_variants WHERE sku = ?', sku))
-          || (barcode && db.get('SELECT * FROM product_variants WHERE barcode = ?', barcode));
+        const VARIANT_SQL = `SELECT v.*, p.name AS product_name FROM product_variants v JOIN products p ON p.id = v.product_id`;
+        let existing = sku && db.get(`${VARIANT_SQL} WHERE v.sku = ?`, sku);
+        if (!existing && barcode) {
+          // Sin SKU, el código de barras solo identifica la misma variante (mismo nombre, talla y color).
+          const byCode = db.get(`${VARIANT_SQL} WHERE v.barcode = ?`, barcode);
+          if (byCode) {
+            const same = byCode.product_name.toLowerCase() === name.toLowerCase()
+              && (byCode.size || '').toLowerCase() === (size || '').toLowerCase()
+              && (byCode.color || '').toLowerCase() === (color || '').toLowerCase();
+            const label = stock.variantLabel(byCode);
+            if (!same) throw new Error(`el código de barras ${barcode} ya pertenece a "${byCode.product_name}${label ? ' ' + label : ''}"`);
+            existing = byCode;
+          }
+        }
         if (existing) {
           if (barcode && db.get('SELECT id FROM product_variants WHERE barcode = ? AND id <> ?', barcode, existing.id)) {
             throw new Error(`el código de barras ${barcode} ya pertenece a otro producto`);
           }
           db.run(`UPDATE product_variants SET barcode = COALESCE(?, barcode), size = COALESCE(?, size), color = COALESCE(?, color),
             cost = ?, price = ?, min_stock = ?, location = COALESCE(?, location), active = ?, updated_at = ? WHERE id = ?`,
-          barcode, size, color, cost || existing.cost, price || existing.price, minStock, location, active, nowLocal(), existing.id);
-          if (updateStock && qty !== existing.stock) {
+          barcode, size, color, cost || existing.cost, price || existing.price, minStock ?? existing.min_stock, location, active, nowLocal(), existing.id);
+          if (updateStock && qty !== null && qty !== existing.stock) {
             stock.moveStock({ variantId: existing.id, qty: qty - existing.stock, type: 'ajuste', reference: 'Importación CSV', userId: req.user.id, allowNegative: true });
           }
           result.updated_variants++;
@@ -172,7 +199,7 @@ router.post('/import/products', can('products.edit'), (req, res) => {
         const vid = Number(db.run(
           `INSERT INTO product_variants (product_id, sku, barcode, size, color, cost, price, min_stock, location, active)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          productId, tmpSku, barcode, size, color, cost, price, minStock, location, active).lastInsertRowid);
+          productId, tmpSku, barcode, size, color, cost, price, minStock ?? defaultMin, location, active).lastInsertRowid);
         if (!sku) db.run('UPDATE product_variants SET sku = ? WHERE id = ?', `P${String(productId).padStart(4, '0')}-${vid}`, vid);
         if (!barcode && req.body.auto_barcode) db.run('UPDATE product_variants SET barcode = ? WHERE id = ?', stock.internalBarcode(vid), vid);
         if (qty > 0) stock.moveStock({ variantId: vid, qty, type: 'inicial', reference: 'Importación CSV', userId: req.user.id, unitCost: cost });

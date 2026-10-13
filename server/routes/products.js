@@ -1,13 +1,23 @@
 'use strict';
 const express = require('express');
 const db = require('../db');
-const { can } = require('../auth');
+const { can, hasPerm } = require('../auth');
 const { bad, notFound, str, num, int, round2, nowLocal } = require('../util');
 const stock = require('../stock');
 
 const router = express.Router();
 
 const GENDERS = ['Hombre', 'Mujer', 'Niño', 'Niña', 'Unisex'];
+
+/** Solo quien administra inventario, compras o reportes puede ver costos. */
+function canSeeCost(req) {
+  return ['products.edit', 'inventory', 'purchases', 'reports'].some((p) => hasPerm(req, p));
+}
+
+function hideCost(v) {
+  delete v.cost;
+  return v;
+}
 
 function ascii(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
@@ -201,6 +211,13 @@ router.get('/products', can('products.view', 'pos', 'inventory', 'purchases'), (
     }
     for (const r of rows) r.variants = byProduct.get(r.id) || [];
   }
+  if (!canSeeCost(req)) {
+    for (const r of rows) {
+      delete r.min_cost; delete r.max_cost; delete r.cost_value;
+      r.variants.forEach(hideCost);
+    }
+    delete summary.cost_value;
+  }
   res.json({ rows, total: summary.products, page, limit, summary });
 });
 
@@ -213,6 +230,7 @@ router.get('/products/:id', can('products.view', 'pos', 'inventory', 'purchases'
       MAX(s.created_at) AS last_sale
     FROM sale_items si JOIN sales s ON s.id = si.sale_id
     WHERE si.product_id = ? AND s.status = 'completada'`, p.id);
+  if (!canSeeCost(req)) p.variants.forEach(hideCost);
   res.json(p);
 });
 
@@ -258,8 +276,9 @@ router.put('/products/:id', can('products.edit'), (req, res) => {
       const seen = new Set();
       for (const v of req.body.variants) {
         const key = `${str(v.size) || ''}|${str(v.color) || ''}`.toLowerCase();
-        if (seen.has(key)) throw bad(`La variante "${[v.size, v.color].filter(Boolean).join(' / ') || 'única'}" está repetida.`);
-        seen.add(key);
+        const isActive = v.active === undefined || !!Number(v.active);
+        if (isActive && seen.has(key)) throw bad(`La variante "${[v.size, v.color].filter(Boolean).join(' / ') || 'única'}" está repetida.`);
+        if (isActive) seen.add(key);
         const old = v.id && existing.find((e) => e.id === int(v.id));
         if (old) {
           const vf = variantFields({ ...old, ...v });
@@ -344,7 +363,8 @@ router.get('/variants/search', can('pos', 'products.view', 'inventory', 'purchas
     FROM product_variants v JOIN products p ON p.id = v.product_id
     LEFT JOIN brands b ON b.id = p.brand_id LEFT JOIN categories c ON c.id = p.category_id
     WHERE (v.barcode = ? OR v.sku = ?) AND v.active = 1 AND p.active = 1`, q, q);
-  if (exact.length) return res.json(exact.map((r) => ({ ...r, exact: true })));
+  const strip = (list) => (canSeeCost(req) ? list : list.map(hideCost));
+  if (exact.length) return res.json(strip(exact.map((r) => ({ ...r, exact: true }))));
   const where = [];
   const params = [];
   for (const w of q.split(/\s+/).slice(0, 8)) {
@@ -353,12 +373,12 @@ router.get('/variants/search', can('pos', 'products.view', 'inventory', 'purchas
     params.push(like, like, like, like, like, like);
   }
   const includeInactive = req.query.all === '1';
-  res.json(db.all(`
+  res.json(strip(db.all(`
     SELECT v.*, p.name, p.category_id, b.name AS brand_name, c.name AS category_name, (p.image IS NOT NULL) AS has_image
     FROM product_variants v JOIN products p ON p.id = v.product_id
     LEFT JOIN brands b ON b.id = p.brand_id LEFT JOIN categories c ON c.id = p.category_id
     WHERE ${where.join(' AND ')} ${includeInactive ? '' : 'AND v.active = 1 AND p.active = 1'}
-    ORDER BY p.name, v.id LIMIT ?`, ...params, Math.min(100, int(req.query.limit, 30))));
+    ORDER BY p.name, v.id LIMIT ?`, ...params, Math.min(100, int(req.query.limit, 30)))));
 });
 
 /** Catálogo compacto para el punto de venta (búsqueda instantánea en el navegador). */
@@ -369,7 +389,7 @@ router.get('/pos/catalog', can('pos'), (req, res) => {
     LEFT JOIN categories c ON c.id = p.category_id
     WHERE p.active = 1 ORDER BY p.name COLLATE NOCASE`);
   const variants = db.all(`
-    SELECT v.id, v.product_id, v.sku, v.barcode, v.size, v.color, v.price, v.cost, v.stock
+    SELECT v.id, v.product_id, v.sku, v.barcode, v.size, v.color, v.price, v.stock
     FROM product_variants v JOIN products p ON p.id = v.product_id
     WHERE v.active = 1 AND p.active = 1 ORDER BY v.id`);
   const byProduct = new Map(products.map((p) => [p.id, Object.assign(p, { variants: [] })]));
