@@ -67,6 +67,11 @@ Contraseñas cifradas, sesiones que expiran y bloqueo temporal tras varios inten
 
 ## 🚀 Instalación
 
+> **Guía completa paso a paso: [DESPLIEGUE.md](DESPLIEGUE.md).** Explica cómo instalarlo en la PC de la tienda
+> con Windows, usarlo desde tablets y otras cajas, entrar desde fuera de la tienda, montarlo en un servidor con
+> **Docker** o en un **servidor Linux (VPS)** con HTTPS, además de respaldos, actualizaciones, seguridad y solución
+> de problemas.
+
 ### Requisito
 Instala **Node.js 22.13 o superior** (versión **LTS**) desde <https://nodejs.org>. Es gratuito.
 
@@ -78,13 +83,36 @@ Instala **Node.js 22.13 o superior** (versión **LTS**) desde <https://nodejs.or
 3. Entra con el usuario inicial:
    - **Usuario:** `admin`
    - **Contraseña:** `admin123` (el sistema te pedirá cambiarla).
+4. *(Opcional)* **`instalar-inicio-automatico.bat`**: el sistema se abre solo al entrar a Windows y se crea un
+   acceso directo en el escritorio. `quitar-inicio-automatico.bat` lo desactiva.
+5. *(Opcional)* **`permitir-acceso-en-red.bat`**: permite entrar desde tablets, celulares y otras cajas de la misma
+   red y muestra la dirección que deben usar.
 
-> Consejo: crea un acceso directo de `iniciar.bat` en el escritorio. Para cerrar el sistema, cierra la ventana negra.
+> Para cerrar el sistema, cierra la ventana negra. No guardes la carpeta dentro de OneDrive ni la abras desde el ZIP:
+> toda la información se guarda en su carpeta `data`.
 
 ### macOS / Linux
 ```bash
 ./iniciar.sh
 ```
+
+### Docker (servidor)
+```bash
+docker compose up -d --build   # http://localhost:3000 · datos en el volumen sistema-inventario_datos
+```
+En Docker la contraseña inicial de `admin` es **aleatoria**: `docker compose logs tienda | grep "Usuario inicial"`.
+HTTPS, zona horaria y respaldos con Docker: [DESPLIEGUE.md › Servidor en la nube con Docker](DESPLIEGUE.md#33-servidor-en-la-nube-con-docker).
+
+### Servidor Linux (Ubuntu 22.04 / 24.04) sin Docker
+```bash
+sudo DOMINIO=tienda.ejemplo.com CORREO=tu@correo.com TZ_TIENDA=America/Mexico_City FIREWALL=1 bash deploy/instalar-ubuntu.sh
+```
+Este comando instala Node.js, el servicio `punto-de-venta` (systemd) y HTTPS automático con Caddy, y al final muestra
+la contraseña inicial (aleatoria) de `admin`. Ver
+[DESPLIEGUE.md › Opción D](DESPLIEGUE.md#4-opción-d-servidor-linux-vps-ubuntu-sin-docker).
+
+¿Olvidaste la contraseña del administrador? `restablecer-admin.bat` (Windows) o `node scripts/restablecer-admin.js`
+generan una temporal: ver [DESPLIEGUE.md › 8.6](DESPLIEGUE.md#86-olvidé-la-contraseña-del-administrador).
 
 ### Manualmente (cualquier sistema)
 ```bash
@@ -93,6 +121,8 @@ npm start          # inicia en http://localhost:3000
 ```
 
 Variables opcionales: `PORT` (puerto, por defecto 3000) y `DATA_DIR` (carpeta de datos, por defecto `./data`).
+Las demás (`TRUST_PROXY`, `AUTO_RESPALDO`, `RESPALDOS_DIAS`…) están en
+[DESPLIEGUE.md › Referencia técnica](DESPLIEGUE.md#9-referencia-técnica).
 
 ---
 

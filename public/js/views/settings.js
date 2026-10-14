@@ -262,6 +262,21 @@
       const csvInput = ref(null);
       const dbInput = ref(null);
       const seeding = ref(false);
+      const saved = ref(null);
+      const loadingSaved = ref(false);
+
+      // Respaldos que el servidor guarda automáticamente cada día (y copias previas a una restauración).
+      async function loadSaved() {
+        loadingSaved.value = true;
+        try { saved.value = await App.api.get('/backups'); } catch (err) { App.error(err); } finally { loadingSaved.value = false; }
+      }
+      onMounted(loadSaved);
+      const savedUrl = (b) => '/api/backups/' + encodeURIComponent(b.name);
+      function fileSize(bytes) {
+        const n = Number(bytes) || 0;
+        if (n >= 1024 * 1024) return fmt.num(n / (1024 * 1024), 1) + ' MB';
+        return fmt.num(Math.max(1, Math.round(n / 1024))) + ' KB';
+      }
 
       async function importCsv(e) {
         const file = e.target.files[0];
@@ -296,7 +311,7 @@
         seeding.value = true;
         try { await App.api.post('/demo', { with_sales: true }); await App.loadCatalogs(); App.toast('Datos de demostración cargados'); } catch (err) { App.error(err); } finally { seeding.value = false; }
       }
-      return { importing, result, updateStock, autoBarcode, csvInput, dbInput, seeding, importCsv, restore, loadDemo };
+      return { importing, result, updateStock, autoBarcode, csvInput, dbInput, seeding, saved, loadingSaved, importCsv, restore, loadDemo, loadSaved, savedUrl, fileSize, fmt };
     },
     template: `
       <div class="grid grid-2">
@@ -332,6 +347,27 @@
               </div>
             </div>
           </div>
+        </div>
+        <div class="card span-all">
+          <div class="card-header"><h3><icon name="history" /> Respaldos automáticos</h3>
+            <button class="btn btn-sm ml-auto" :disabled="loadingSaved" @click="loadSaved"><icon name="refresh-cw" /> Actualizar</button></div>
+          <div class="card-body">
+            <p style="margin:0">El sistema guarda <b>automáticamente</b> una copia completa de la información <b>cada día</b> en la carpeta
+              <code>data/respaldos</code> de la computadora o servidor donde está instalado<template v-if="saved"> (se conservan los {{ saved.keep }} más recientes)</template>.
+              También se guarda ahí una copia antes de cada restauración. Aun así, descarga de vez en cuando un respaldo y guárdalo fuera de este equipo (USB o nube).</p>
+            <p v-if="saved" class="tiny muted" style="margin:6px 0 0">Ubicación en el servidor: <span class="mono">{{ saved.dir }}</span></p>
+          </div>
+          <div v-if="saved && saved.files.length" class="table-wrap" style="max-height:360px"><table class="table table-sm">
+            <thead><tr><th>Archivo</th><th>Tipo</th><th>Fecha</th><th class="num">Tamaño</th><th></th></tr></thead>
+            <tbody><tr v-for="b in saved.files" :key="b.name">
+              <td class="mono">{{ b.name }}</td>
+              <td><span class="badge" :class="b.type === 'auto' ? 'badge-info' : 'badge-warning'">{{ b.type === 'auto' ? 'Automático' : 'Antes de restaurar' }}</span></td>
+              <td class="small">{{ fmt.datetime(b.modified_at) }}</td>
+              <td class="num">{{ fileSize(b.size) }}</td>
+              <td class="actions"><a :href="savedUrl(b)" class="btn btn-sm" download><icon name="download" /> Descargar</a></td>
+            </tr></tbody>
+          </table></div>
+          <empty v-else-if="saved" icon="archive" title="Aún no hay respaldos automáticos" text="El primero se crea unos segundos después de iniciar el sistema y luego uno cada día." />
         </div>
         <div class="card span-all">
           <div class="card-header"><h3><icon name="sparkles" /> Datos de demostración</h3></div>

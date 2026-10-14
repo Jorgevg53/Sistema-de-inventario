@@ -1,0 +1,74 @@
+# Sistema de Punto de Venta e Inventario con Docker.
+#
+#   Iniciar / actualizar:   docker compose up -d --build
+#   Ver estado y salud:     docker compose ps
+#   Ver mensajes:           docker compose logs -f
+#   Detener:                docker compose down        (los datos se conservan en el volumen)
+#
+# ¡CUIDADO! "docker compose down -v" BORRA el volumen con la base de datos.
+#
+# Primer inicio: usuario admin con una contraseña ALEATORIA (pide cambiarla al entrar). Para verla:
+#   docker compose logs tienda | grep "Usuario inicial"
+# Olvidé la contraseña del administrador (genera una temporal; ver DESPLIEGUE.md 8.6):
+#   docker compose stop && docker compose run --rm tienda node scripts/restablecer-admin.js && docker compose start
+# Datos de ejemplo (solo con la base vacía): docker compose exec tienda npm run demo
+
+# Nombre fijo del proyecto: el volumen siempre se llama "sistema-inventario_datos",
+# aunque la carpeta del proyecto tenga otro nombre.
+name: sistema-inventario
+
+services:
+  tienda:
+    build: .
+    image: sistema-inventario:latest
+
+    # Se reinicia solo si falla o al reiniciar el equipo (salvo que lo detengas tú).
+    restart: unless-stopped
+
+    # Proceso init ligero: reenvía SIGTERM a node (cierre limpio de la base) y limpia procesos huérfanos.
+    init: true
+
+    # Puerto de acceso "EQUIPO:CONTENEDOR". Cambia solo el primero, p. ej. PUERTO=8080 en un archivo .env.
+    # Abre http://IP-DEL-EQUIPO:3000 desde cajas, tabletas o celulares de la red local.
+    # Si usarás un proxy HTTPS en este mismo equipo, publícalo solo localmente:
+    #   - "127.0.0.1:${PUERTO:-3000}:3000"
+    ports:
+      - "${PUERTO:-3000}:3000"
+
+    environment:
+      # Zona horaria de las ventas, cortes y reportes. Otras: America/Cancun, America/Tijuana,
+      # America/Hermosillo, America/Mazatlan, America/Chihuahua, America/Monterrey, America/Merida.
+      TZ: ${ZONA_HORARIA:-America/Mexico_City}
+      # Puerto interno del contenedor (déjalo en 3000; para cambiar el de acceso usa PUERTO arriba).
+      PORT: "3000"
+
+      # --- Opcionales (quita el # para activarlas) ---
+      # Detrás de un proxy HTTPS (Nginx, Caddy, Traefik...): a quién creerle X-Forwarded-For/-Proto
+      # (IP real del cliente y cookie Secure). Por defecto "loopback", que en Docker no basta porque
+      # el proxy llega desde la red interna de Docker: usa "1" (un proxy delante) y publica el puerto
+      # solo en 127.0.0.1 (ver "ports") para que nadie se salte el proxy.
+      # TRUST_PROXY: "1"
+      # Respaldo automático diario en /app/data/respaldos ("0" lo desactiva).
+      # AUTO_RESPALDO: "1"
+      # Cuántos respaldos automáticos conservar (30 por defecto).
+      # RESPALDOS_DIAS: "30"
+
+    # Base de datos, respaldos/ y tmp/ viven en el volumen: sobreviven a down/up y a reconstruir la imagen.
+    volumes:
+      - datos:/app/data
+
+    # Limita el tamaño de los registros para que no llenen el disco con los años.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # Respaldos del volumen:
+  #  - Lo más fácil y seguro: en el sistema, Configuración › Respaldo e importación › Descargar respaldo.
+  #  - Copiar los respaldos automáticos al equipo (el "/." evita que se anide ./respaldos/respaldos al repetirlo):
+  #      docker compose cp tienda:/app/data/respaldos/. ./respaldos
+  #  - Copia completa de la carpeta de datos (detén primero para que la copia sea consistente):
+  #      docker compose stop && docker compose cp tienda:/app/data/. ./copia-datos && docker compose start
+  datos:

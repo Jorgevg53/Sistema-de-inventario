@@ -1,0 +1,66 @@
+# Servicio systemd del Sistema de Punto de Venta e Inventario (Ubuntu / Debian, sin Docker).
+#
+# deploy/instalar-ubuntu.sh lo instala solo en /etc/systemd/system/punto-de-venta.service
+# (ajusta la ruta de node y el puerto). Instalación a mano:
+#   sudo cp deploy/punto-de-venta.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now punto-de-venta
+#
+# Comandos útiles:
+#   systemctl status punto-de-venta          estado
+#   journalctl -u punto-de-venta -f          mensajes en vivo (Ctrl + C para salir)
+#   sudo systemctl restart punto-de-venta    reiniciar
+#
+# Ajustes propios sin editar este archivo: /etc/punto-de-venta/entorno (p. ej. RESPALDOS_DIAS=60).
+
+[Unit]
+Description=Sistema de Punto de Venta e Inventario
+Documentation=https://github.com/Jorgevg53/Sistema-de-inventario
+After=network.target
+
+[Service]
+Type=simple
+User=pdv
+Group=pdv
+WorkingDirectory=/opt/punto-de-venta
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/punto-de-venta
+# Caddy (HTTPS) corre en este mismo equipo: solo se cree en X-Forwarded-* que lleguen desde 127.0.0.1 / ::1.
+Environment=TRUST_PROXY=loopback
+EnvironmentFile=-/etc/punto-de-venta/entorno
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server/index.js
+# SIGTERM: el sistema cierra la base de datos limpiamente antes de salir.
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Base de datos, respaldos/ y tmp/ viven en /var/lib/punto-de-venta (systemd la crea con dueño pdv).
+StateDirectory=punto-de-venta
+StateDirectoryMode=0750
+UMask=0027
+
+# Endurecimiento: todo el disco es de solo lectura para el servicio, salvo la carpeta de datos.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/punto-de-venta
+PrivateTmp=true
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+# AF_NETLINK: Node lo usa al iniciar para mostrar las IP del equipo.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+# Sin MemoryDenyWriteExecute: el motor de JavaScript de Node (V8) necesita generar código en memoria.
+
+[Install]
+WantedBy=multi-user.target

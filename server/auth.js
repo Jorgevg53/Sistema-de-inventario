@@ -66,15 +66,40 @@ function publicUser(u) {
   };
 }
 
+/** Contraseña aleatoria fácil de dictar (sin 0/O, 1/l/I). */
+function randomPassword(length = 12) {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < length; i++) out += chars[crypto.randomInt(chars.length)];
+  return out;
+}
+
+/**
+ * Crea el usuario admin si la base no tiene usuarios. Contraseña inicial: ADMIN_PASSWORD_INICIAL si está
+ * definida; en servidores (NODE_ENV=production: Docker y Opción D) una aleatoria, para que nunca quede
+ * publicada una contraseña conocida; en la PC de la tienda, admin123. Siempre pide cambiarla al entrar.
+ * Devuelve la contraseña creada (o null si ya había usuarios).
+ */
 function ensureAdmin() {
   const { n } = db.get('SELECT COUNT(*) AS n FROM users');
-  if (n === 0) {
-    db.run(
-      'INSERT INTO users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 1)',
-      'Administrador', 'admin', hashPassword('admin123'), 'admin',
-    );
-    console.log('  Usuario inicial creado → usuario: admin  contraseña: admin123');
+  if (n !== 0) return null;
+  const fromEnv = String(process.env.ADMIN_PASSWORD_INICIAL || '');
+  if (fromEnv && fromEnv.length < 6) console.warn('  ADMIN_PASSWORD_INICIAL tiene menos de 6 caracteres; se ignoró.');
+  let password = 'admin123';
+  let shown = 'admin123';
+  if (fromEnv.length >= 6) {
+    password = fromEnv;
+    shown = 'la de ADMIN_PASSWORD_INICIAL';
+  } else if (process.env.NODE_ENV === 'production') {
+    password = randomPassword();
+    shown = password;
   }
+  db.run(
+    'INSERT INTO users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 1)',
+    'Administrador', 'admin', hashPassword(password), 'admin',
+  );
+  console.log(`  Usuario inicial creado → usuario: admin  contraseña: ${shown}`);
+  return password;
 }
 
 function createSession(userId) {
@@ -100,12 +125,17 @@ function tokenFrom(req) {
   return parseCookies(req.headers.cookie)[COOKIE];
 }
 
-function setSessionCookie(res, token) {
-  res.setHeader('Set-Cookie', `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${COOKIE_DAYS * 86400}`);
+// Con HTTPS (directo o detrás de un proxy de confianza, ver TRUST_PROXY) la cookie se marca Secure.
+function cookieAttrs(req) {
+  return `HttpOnly; SameSite=Lax; Path=/${req && req.secure ? '; Secure' : ''}`;
 }
 
-function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+function setSessionCookie(req, res, token) {
+  res.setHeader('Set-Cookie', `${COOKIE}=${token}; ${cookieAttrs(req)}; Max-Age=${COOKIE_DAYS * 86400}`);
+}
+
+function clearSessionCookie(req, res) {
+  res.setHeader('Set-Cookie', `${COOKIE}=; ${cookieAttrs(req)}; Max-Age=0`);
 }
 
 /** Middleware: exige sesión válida y carga req.user. */
@@ -151,6 +181,7 @@ module.exports = {
   ROLE_NAMES,
   hashPassword,
   verifyPassword,
+  randomPassword,
   publicUser,
   ensureAdmin,
   createSession,

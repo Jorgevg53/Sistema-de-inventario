@@ -9,6 +9,7 @@ const { bad, str, num, int, round2, nowLocal } = require('../util');
 const { csvToObjects, toCsv } = require('../csv');
 const stock = require('../stock');
 const demo = require('../demo');
+const backups = require('../backups');
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.get('/backup', can('settings'), (req, res) => {
   const dir = path.join(db.DATA_DIR, 'tmp');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `respaldo-${stamp()}.db`);
-  db.raw().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  backups.writeSnapshot(file); // copia sin sesiones
   res.download(file, `respaldo-tienda-${stamp()}.db`, () => fs.rm(file, { force: true }, () => {}));
 });
 
@@ -47,15 +48,16 @@ router.post('/backup/restore', can('settings'), express.raw({ type: 'application
     throw err.status ? err : bad('No se pudo leer el respaldo.');
   }
   // Copia de seguridad automática de la base actual antes de reemplazarla.
-  const backups = path.join(db.DATA_DIR, 'respaldos');
-  fs.mkdirSync(backups, { recursive: true });
-  const safety = path.join(backups, `antes-de-restaurar-${stamp()}.db`);
-  db.raw().exec(`VACUUM INTO '${safety.replace(/'/g, "''")}'`);
+  fs.mkdirSync(backups.backupDir(), { recursive: true });
+  const safety = path.join(backups.backupDir(), `antes-de-restaurar-${stamp()}.db`);
+  backups.writeSnapshot(safety);
   db.close();
   const replaceWith = (source) => {
     for (const ext of ['', '-wal', '-shm']) fs.rmSync(db.DB_FILE + ext, { force: true });
     fs.copyFileSync(source, db.DB_FILE);
     db.open();
+    // Nadie conserva la sesión: todos vuelven a entrar con los usuarios del respaldo.
+    db.run('DELETE FROM sessions');
   };
   try {
     replaceWith(tmp);

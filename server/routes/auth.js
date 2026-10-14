@@ -2,26 +2,68 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../auth');
-const { HttpError, bad, notFound, str } = require('../util');
+const { HttpError, bad, notFound, str, nowLocal } = require('../util');
+const { version } = require('../../package.json');
 
 const publicRouter = express.Router();
 const router = express.Router();
 
-// Limitador simple de intentos de inicio de sesión (por usuario + IP).
-const attempts = new Map();
-function tooManyAttempts(key) {
-  const now = Date.now();
+// Limitador de intentos fallidos de inicio de sesión, en ventanas de 10 minutos:
+// 8 por usuario desde la misma IP y 30 por IP con cualquier usuario (así no se pueden probar
+// muchos usuarios ni llenar la tabla para borrar los bloqueos).
+const WINDOW_MS = 10 * 60 * 1000;
+const MAX_PER_USER = 8;
+const MAX_PER_IP = 30;
+const MAX_ENTRIES = 10000;
+const attempts = new Map(); // clave → { first, count, limit }
+
+function failures(key, now) {
   const rec = attempts.get(key);
-  if (!rec || now - rec.first > 10 * 60 * 1000) return false;
-  return rec.count >= 8;
+  return rec && now - rec.first <= WINDOW_MS ? rec.count : 0;
 }
-function registerFail(key) {
+
+function tooManyAttempts(userKey, ipKey) {
   const now = Date.now();
-  if (attempts.size > 1000) attempts.clear();
-  const rec = attempts.get(key);
-  if (!rec || now - rec.first > 10 * 60 * 1000) attempts.set(key, { first: now, count: 1 });
-  else rec.count++;
+  return failures(userKey, now) >= MAX_PER_USER || failures(ipKey, now) >= MAX_PER_IP;
 }
+
+// Mantiene la tabla acotada sin soltar los bloqueos vigentes: primero quita lo vencido, luego lo más
+// antiguo que no esté bloqueando y, solo si aún no alcanza, lo más antiguo (el Map guarda el orden).
+function makeRoom(now) {
+  if (attempts.size < MAX_ENTRIES) return;
+  for (const [k, r] of attempts) if (now - r.first > WINDOW_MS) attempts.delete(k);
+  for (const [k, r] of attempts) {
+    if (attempts.size < MAX_ENTRIES) return;
+    if (r.count < r.limit) attempts.delete(k);
+  }
+  for (const k of attempts.keys()) {
+    if (attempts.size < MAX_ENTRIES) return;
+    attempts.delete(k);
+  }
+}
+
+function registerFail(userKey, ipKey) {
+  const now = Date.now();
+  makeRoom(now);
+  for (const [key, limit] of [[userKey, MAX_PER_USER], [ipKey, MAX_PER_IP]]) {
+    const rec = attempts.get(key);
+    if (rec && now - rec.first <= WINDOW_MS) rec.count++;
+    else {
+      attempts.delete(key);
+      attempts.set(key, { first: now, count: 1, limit });
+    }
+  }
+}
+
+// Estado del servicio para monitoreo (Docker, balanceadores, uptime). No requiere sesión.
+publicRouter.get('/health', (req, res) => {
+  try {
+    db.get('SELECT 1 AS ok');
+  } catch {
+    return res.status(503).json({ ok: false });
+  }
+  res.json({ ok: true, version, time: nowLocal() });
+});
 
 // Datos mínimos de la tienda para la pantalla de inicio de sesión.
 publicRouter.get('/public/settings', (req, res) => {
@@ -29,27 +71,30 @@ publicRouter.get('/public/settings', (req, res) => {
   res.json({ store_name: s.store_name, store_slogan: s.store_slogan, currency_symbol: s.currency_symbol, locale: s.locale });
 });
 
-publicRouter.post('/auth/login', (req, res) => {
-  const username = str(req.body.username);
-  const password = String(req.body.password || '');
+// Sin sesión solo se aceptan cuerpos pequeños; el JSON grande (imágenes, CSV) se lee después de requireAuth.
+publicRouter.post('/auth/login', express.json({ limit: '10kb' }), (req, res) => {
+  const body = req.body || {};
+  const username = str(body.username);
+  const password = String(body.password || '');
   if (!username || !password) throw bad('Escribe tu usuario y contraseña.');
-  const key = `${username.toLowerCase()}|${req.ip}`;
-  if (tooManyAttempts(key)) throw new HttpError(429, 'Demasiados intentos. Espera unos minutos.');
+  const userKey = `u|${username.toLowerCase().slice(0, 64)}|${req.ip}`;
+  const ipKey = `ip|${req.ip}`;
+  if (tooManyAttempts(userKey, ipKey)) throw new HttpError(429, 'Demasiados intentos. Espera unos minutos.');
 
   const user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', username);
   if (!user || !auth.verifyPassword(password, user.password_hash)) {
-    registerFail(key);
+    registerFail(userKey, ipKey);
     throw new HttpError(401, 'Usuario o contraseña incorrectos.');
   }
-  attempts.delete(key);
+  attempts.delete(userKey);
   const token = auth.createSession(user.id);
-  auth.setSessionCookie(res, token);
+  auth.setSessionCookie(req, res, token);
   res.json({ user: auth.publicUser(user), token });
 });
 
 router.post('/auth/logout', (req, res) => {
   db.run('DELETE FROM sessions WHERE token = ?', req.token);
-  auth.clearSessionCookie(res);
+  auth.clearSessionCookie(req, res);
   res.json({ ok: true });
 });
 

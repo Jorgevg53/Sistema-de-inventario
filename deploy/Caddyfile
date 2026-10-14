@@ -1,0 +1,42 @@
+# Caddy 2: proxy inverso con HTTPS automático (Let's Encrypt) para el Sistema de Punto de Venta.
+#
+# Requisitos:
+#  1. El dominio (registro DNS tipo A, y AAAA si usas IPv6) apunta a la IP pública de este servidor.
+#  2. Los puertos 80 y 443 están abiertos (Let's Encrypt comprueba el dominio por el puerto 80).
+#  3. El sistema corre en este mismo equipo en el puerto 3000 (servicio punto-de-venta).
+#
+# deploy/instalar-ubuntu.sh lo copia a /etc/caddy/Caddyfile con tu dominio ya puesto.
+# Para usarlo a mano: cambia {$DOMINIO:tienda.ejemplo.com} por tu dominio, cópialo a /etc/caddy/Caddyfile y:
+#   sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   sudo systemctl reload caddy
+#
+# Correo para avisos de Let's Encrypt (opcional, recomendado): agrega al inicio del archivo
+#   {
+#   	email tu-correo@ejemplo.com
+#   }
+
+{$DOMINIO:tienda.ejemplo.com} {
+	# Comprime HTML, JavaScript, JSON y CSV.
+	encode zstd gzip
+
+	# Tamaño máximo de lo que se envía al sistema. Solo la restauración de respaldos acepta archivos
+	# grandes (hasta 500 MB; aquí un poco más para que, si se excede, responda el propio sistema con
+	# su mensaje en español). Todo lo demás (imágenes de productos, CSV) cabe en 25 MB.
+	@restaurar path /api/backup/restore
+	request_body @restaurar {
+		max_size 512MiB
+	}
+	@normal not path /api/backup/restore
+	request_body @normal {
+		max_size 25MB
+	}
+
+	# Los navegadores usarán siempre HTTPS con este dominio (1 año).
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Caddy agrega X-Forwarded-For y X-Forwarded-Proto. El sistema les cree solo si confía en el proxy:
+	#  - Opción D (sin Docker): TRUST_PROXY=loopback, ya incluido en punto-de-venta.service.
+	#  - Docker (DESPLIEGUE.md 3.3): TRUST_PROXY=1 en docker-compose.override.yml, porque Caddy llega al
+	#    contenedor desde la red de Docker y no desde 127.0.0.1. Sin eso la cookie de sesión no se marca Secure.
+	reverse_proxy 127.0.0.1:{$PUERTO:3000}
+}

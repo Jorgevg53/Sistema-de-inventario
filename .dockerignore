@@ -1,0 +1,36 @@
+# Solo se envía a Docker lo necesario para construir la imagen.
+
+# Dependencias: se instalan dentro de la imagen con npm ci.
+node_modules
+npm-debug.log*
+
+# Datos de la tienda: NUNCA deben quedar dentro de la imagen.
+data
+datos
+respaldos
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Variables locales de docker compose (puerto, zona horaria).
+.env
+
+# Control de versiones, pruebas, utilidades y archivos de arranque de escritorio.
+.git
+.gitignore
+.gitattributes
+.github
+test
+scripts
+# ...salvo la herramienta para restablecer la contraseña del administrador (DESPLIEGUE.md 8.6).
+!scripts/restablecer-admin.js
+*.bat
+*.sh
+*.md
+Dockerfile
+docker-compose*.yml
+.dockerignore
+.vscode
+.idea
+.DS_Store
