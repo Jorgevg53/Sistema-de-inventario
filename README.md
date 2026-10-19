@@ -67,7 +67,9 @@ Contraseñas cifradas, sesiones que expiran y bloqueo temporal tras varios inten
 
 ## 🚀 Instalación
 
-> **Guía completa paso a paso: [DESPLIEGUE.md](DESPLIEGUE.md).** Explica cómo instalarlo en la PC de la tienda
+> **Guía completa paso a paso: [DESPLIEGUE.md](DESPLIEGUE.md)** · versión para imprimir:
+> [docs/guia-de-instalacion.pdf](docs/guia-de-instalacion.pdf) (hoja carta) o
+> [docs/guia-de-instalacion.html](docs/guia-de-instalacion.html) (se abre sin internet; imprime con Ctrl + P). Explica cómo instalarlo en la PC de la tienda
 > con Windows, usarlo desde tablets y otras cajas, entrar desde fuera de la tienda, montarlo en un servidor con
 > **Docker** o en un **servidor Linux (VPS)** con HTTPS, además de respaldos, actualizaciones, seguridad y solución
 > de problemas.
