@@ -63,6 +63,12 @@ Contraseñas cifradas, sesiones que expiran y bloqueo temporal tras varios inten
 ### 🗄️ Respaldos
 - Descarga de un **respaldo completo** con un clic y restauración desde archivo (con copia automática previa).
 
+### 🤖 JARVIS: asistente personal para tu agenda y tus proyectos
+En la carpeta [`jarvis/`](jarvis/README.md) hay una aplicación aparte: un asistente inteligente al que le hablas
+(o escribes) en español para agendar citas, recibir recordatorios, organizar tareas y planear proyectos, con la
+inteligencia de Claude o en modo básico sin internet. Se inicia con `jarvis/iniciar-jarvis.bat` (Windows) o
+`jarvis/iniciar.sh` y se abre en <http://localhost:3100>. Detalles en [jarvis/README.md](jarvis/README.md).
+
 ---
 
 ## 🚀 Instalación
