@@ -74,6 +74,22 @@ test('sin contraseña solo se permite el acceso local', async () => {
   assert.equal(status, 403);
   // Peticiones desde otra página web.
   assert.equal((await api.post('/projects', { name: 'X' }, { Origin: 'http://evil.example' })).status, 403);
+  // Detrás de un proxy local (Tailscale, Caddy…) que cambia el Host, vale el X-Forwarded-Host que envía.
+  // Lo que llega por un proxy nunca cuenta como "este equipo": sin contraseña pide definirla.
+  const viaProxy = (forwardedHost) => new Promise((resolve, reject) => {
+    const headers = { Host: `127.0.0.1:${port}`, Origin: 'https://mi-pc.red.ts.net' };
+    if (forwardedHost) headers['X-Forwarded-Host'] = forwardedHost;
+    http.get({ host: '127.0.0.1', port, path: '/api/projects', headers }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, error: JSON.parse(body).error }));
+    }).on('error', reject);
+  });
+  let r = await viaProxy('mi-pc.red.ts.net');
+  assert.equal(r.status, 403);
+  assert.match(r.error, /define una contraseña/);
+  r = await viaProxy(null);
+  assert.match(r.error, /otro sitio/);
   // Formularios que no son JSON.
   const res = await fetch(base + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'hola' });
   assert.equal(res.status, 415);

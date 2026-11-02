@@ -71,9 +71,13 @@ function destroySession(req, res) {
 
 const isLoopback = (ip) => /^(127\.|::1$|::ffff:127\.)/.test(String(ip || ''));
 
-/** ¿La petición viene de este mismo equipo (y no de una página web ajena que se hace pasar por localhost)? */
+// Encabezados que agregan los proxies (Caddy, Tailscale, Cloudflare…): lo que llega por ellos no es "este equipo".
+const PROXY_HEADERS = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'x-real-ip', 'via', 'cf-connecting-ip', 'tailscale-user-login'];
+
+/** ¿La petición viene de este mismo equipo (y no de una página web ajena ni a través de un proxy)? */
 function isLocalRequest(req) {
-  return isLoopback(req.socket.remoteAddress) && isLoopback(req.ip) && LOCAL_HOSTS.test(req.headers.host || '');
+  return isLoopback(req.socket.remoteAddress) && isLoopback(req.ip) && LOCAL_HOSTS.test(req.headers.host || '')
+    && !PROXY_HEADERS.some((h) => h in req.headers);
 }
 
 function status(req) {
@@ -85,14 +89,21 @@ function status(req) {
   };
 }
 
+/**
+ * ¿La petición viene de la propia página de JARVIS? Se compara el Origin con el Host o, detrás de un proxy de
+ * confianza (Caddy, Tailscale, Cloudflare…) que cambia el Host, con el X-Forwarded-Host que envía (req.hostname).
+ */
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  let url;
+  try { url = new URL(origin); } catch { return false; }
+  return url.host === req.headers.host || url.hostname === req.hostname;
+}
+
 /** Protege la API. Además rechaza peticiones enviadas desde otros sitios web. */
 function requireAuth(req, res, next) {
-  const origin = req.headers.origin;
-  if (origin) {
-    let host = null;
-    try { host = new URL(origin).host; } catch { /* origen inválido */ }
-    if (host !== req.headers.host) return next(new HttpError(403, 'Petición rechazada: viene de otro sitio.'));
-  }
+  if (!sameOrigin(req)) return next(new HttpError(403, 'Petición rechazada: viene de otro sitio.'));
   if (req.method === 'POST' && req.headers['content-length'] !== '0' && !req.is('application/json')) {
     return next(new HttpError(415, 'Las peticiones deben enviarse en formato JSON.'));
   }

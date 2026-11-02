@@ -99,9 +99,10 @@ function start(port = Number(process.env.PORT) || 3100, host = process.env.HOST 
     console.log('  ==============================================');
     console.log('   J.A.R.V.I.S. · Asistente personal');
     console.log('  ==============================================');
-    console.log(`   Abre en este equipo:  http://localhost:${port}`);
-    if (anyHost && fs.existsSync('/.dockerenv')) console.log('   (Docker: usa la IP del servidor y el puerto publicado)');
-    else if (anyHost) {
+    const docker = fs.existsSync('/.dockerenv');
+    if (docker) console.log('   Abre: http://IP-DEL-SERVIDOR:PUERTO (el que publica Docker; 3100 por defecto) o tu dominio con HTTPS');
+    else console.log(`   Abre en este equipo:  http://localhost:${port}`);
+    if (anyHost && !docker) {
       for (const ip of localAddresses()) console.log(`   Desde el celular:     http://${ip}:${port}${auth.passwordRequired() ? '' : '  (primero define una contraseña en Ajustes)'}`);
     }
     console.log(`   Inteligencia: ${claude.enabled() ? `Claude (${claude.model()})` : 'modo básico (agrega tu clave de Claude en Ajustes)'}`);

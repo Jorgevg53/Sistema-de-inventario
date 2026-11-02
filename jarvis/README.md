@@ -53,12 +53,16 @@ Si Claude no está disponible (sin internet, clave inválida…), JARVIS respond
 
 ## 🚀 Instalación
 
+> **Guía completa de despliegue: [DESPLIEGUE.md](DESPLIEGUE.md)**: en tu computadora con inicio automático, desde tu
+> celular con voz (Tailscale) o en un servidor en la nube con Docker y HTTPS.
+
 Requisito: **Node.js 22.13 o superior** (versión LTS) desde <https://nodejs.org>.
 
 ### Windows
 1. Abre la carpeta `jarvis` y haz doble clic en **`iniciar-jarvis.bat`**.
    La primera vez instala sus componentes (necesita internet solo esa vez).
 2. Se abre el navegador en **http://localhost:3100**.
+3. *(Opcional)* **`instalar-inicio-automatico.bat`**: JARVIS se abre solo al entrar a Windows.
 
 ### macOS / Linux
 ```bash
@@ -72,6 +76,14 @@ cd jarvis
 npm install
 npm start        # http://localhost:3100
 ```
+
+### Docker (servidor)
+```bash
+cd jarvis
+echo "JARVIS_CLAVE=una-contraseña-larga" > .env
+docker compose up -d --build     # http://IP-DEL-SERVIDOR:3100
+```
+Con HTTPS y dominio propio: [DESPLIEGUE.md › Opción C](DESPLIEGUE.md#3-opción-c-servidor-en-la-nube-con-docker-247).
 
 > JARVIS usa el puerto **3100**, así que puede funcionar al mismo tiempo que el punto de venta (puerto 3000).
 
@@ -92,14 +104,15 @@ básico nada sale de tu computadora (el dictado por voz de Chrome sí usa los se
 ---
 
 ## 📱 Usarlo desde el celular u otra computadora
+Lo más sencillo y con voz es **Tailscale** ([DESPLIEGUE.md › Opción B](DESPLIEGUE.md#2-opción-b-úsalo-desde-tu-celular-con-voz-desde-cualquier-lugar)). En tu red Wi‑Fi también puedes:
+
 1. En la computadora donde corre JARVIS ve a **Ajustes → Seguridad y acceso** y define una **contraseña**
    (sin contraseña, por seguridad, JARVIS solo acepta conexiones de ese mismo equipo).
 2. La ventana de JARVIS muestra la dirección para otros dispositivos, por ejemplo `http://192.168.1.50:3100`.
    Ábrela en el celular (misma red Wi‑Fi) y entra con tu contraseña.
 
-> El **micrófono** del navegador solo funciona en `http://localhost` o con **HTTPS**. Desde el celular puedes
-> escribir sin problema; para hablarle, publica JARVIS con HTTPS (por ejemplo detrás de Caddy como el punto de
-> venta, ver `DESPLIEGUE.md` en la carpeta principal) y usa `TRUST_PROXY` si hace falta.
+> El **micrófono** del navegador solo funciona en `http://localhost` o con **HTTPS**. Por la dirección
+> `http://192.168…` puedes escribir, pero para hablarle usa Tailscale (HTTPS gratis) o la opción con dominio.
 
 ### Recordatorios
 Los avisos suenan mientras JARVIS esté abierto en alguna pestaña del navegador. En **Ajustes → Voz y avisos**
