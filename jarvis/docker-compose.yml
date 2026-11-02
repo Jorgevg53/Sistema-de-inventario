@@ -1,0 +1,53 @@
+# JARVIS con Docker (servidor o computadora siempre encendida). Ver DESPLIEGUE.md, opción C.
+#
+#   Iniciar / actualizar:   docker compose up -d --build
+#   Ver estado y salud:     docker compose ps
+#   Ver mensajes:           docker compose logs -f
+#   Detener:                docker compose down        (los datos se conservan en el volumen)
+#
+# ¡CUIDADO! "docker compose down -v" BORRA el volumen con tu agenda y tus proyectos.
+#
+# Ajustes en un archivo .env junto a este (no se sube a git). Mínimo:
+#   JARVIS_CLAVE=una-contraseña-larga
+# Opcionales:
+#   PUERTO=127.0.0.1:3100            solo dentro del servidor (cuando Caddy da el HTTPS)
+#   TRUST_PROXY=1                    detrás de Caddy u otro proxy HTTPS
+#   ZONA_HORARIA=America/Mexico_City
+#   ANTHROPIC_API_KEY=sk-ant-...     (o guárdala desde Ajustes)
+
+# Nombre fijo del proyecto: el volumen siempre se llama "jarvis_datos".
+name: jarvis
+
+services:
+  jarvis:
+    build: .
+    image: jarvis:latest
+    restart: unless-stopped
+    init: true
+
+    # Puerto de acceso "EQUIPO:CONTENEDOR". Cambia solo el primero (PUERTO en .env).
+    ports:
+      - "${PUERTO:-3100}:3100"
+
+    environment:
+      TZ: ${ZONA_HORARIA:-America/Mexico_City}
+      PORT: "3100"
+      # En Docker las peticiones nunca llegan "desde este equipo", así que la contraseña es obligatoria.
+      JARVIS_CLAVE: ${JARVIS_CLAVE:?Falta JARVIS_CLAVE en el archivo .env (la contraseña para entrar a JARVIS)}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Detrás de un proxy HTTPS en el mismo servidor usa "1" (el proxy llega desde la red de Docker).
+      TRUST_PROXY: ${TRUST_PROXY:-loopback}
+
+    volumes:
+      - datos:/app/data
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # Respaldo: en JARVIS, Ajustes › Respaldo › Descargar respaldo. O copia completa de los datos:
+  #   docker compose stop && docker compose cp jarvis:/app/data/. ./copia-jarvis && docker compose start
+  datos:

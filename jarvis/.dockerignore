@@ -1,0 +1,23 @@
+# Solo se envía a Docker lo necesario para construir la imagen.
+node_modules
+npm-debug.log*
+
+# Datos: NUNCA deben quedar dentro de la imagen.
+data
+*.db
+*.db-wal
+*.db-shm
+
+# Ajustes locales de docker compose (contraseña, clave de Claude).
+.env
+
+.git
+test
+scripts
+deploy
+*.bat
+*.sh
+*.md
+Dockerfile
+docker-compose*.yml
+.dockerignore

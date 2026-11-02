@@ -16,6 +16,9 @@ respaldos
 # Variables locales de docker compose (puerto, zona horaria).
 .env
 
+# JARVIS (asistente personal) es una aplicación aparte: no va en la imagen del punto de venta.
+jarvis
+
 # Control de versiones, pruebas, utilidades y archivos de arranque de escritorio.
 .git
 .gitignore

@@ -1,0 +1,26 @@
+# Caddy 2: HTTPS automático (Let's Encrypt) para JARVIS. Ver DESPLIEGUE.md, opción C.
+#
+# Requisitos:
+#  1. El dominio (registro DNS tipo A) apunta a la IP pública de este servidor.
+#  2. Los puertos 80 y 443 están abiertos.
+#  3. JARVIS corre en este mismo servidor en el puerto 3100 (docker compose con PUERTO=127.0.0.1:3100).
+#
+# Uso: cambia jarvis.ejemplo.com por tu dominio, copia este archivo a /etc/caddy/Caddyfile y ejecuta:
+#   sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   sudo systemctl reload caddy
+#
+# Si el punto de venta ya usa Caddy en este servidor, agrega solo el bloque de abajo a su Caddyfile.
+
+{$DOMINIO:jarvis.ejemplo.com} {
+	encode zstd gzip
+
+	# La restauración de respaldos es lo más grande que se envía (JARVIS acepta hasta 5 MB).
+	request_body {
+		max_size 6MB
+	}
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Caddy agrega X-Forwarded-For y X-Forwarded-Proto; JARVIS les cree con TRUST_PROXY=1 (en .env).
+	reverse_proxy 127.0.0.1:{$PUERTO:3100}
+}
